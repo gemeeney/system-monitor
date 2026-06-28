@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SysMon — Live System Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap");
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0a0e17;
+        --surface: #111827;
+        --border: #1f2d40;
+        --accent: #00d4ff;
+        --warn: #f59e0b;
+        --danger: #ef4444;
+        --ok: #10b981;
+        --text: #e2e8f0;
+        --muted: #64748b;
+        --mono: "IBM Plex Mono", monospace;
+        --sans: "IBM Plex Sans", sans-serif;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-weight: 300;
+        min-height: 100vh;
+        padding: 0;
+      }
+
+      /* ── Header ── */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 32px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+      }
+
+      .logo {
+        font-family: var(--mono);
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--accent);
+        letter-spacing: 0.05em;
+      }
+
+      .logo span {
+        color: var(--muted);
+        font-weight: 400;
+      }
+
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+
+      .pulse {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ok);
+        animation: pulse 2s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.4;
+          transform: scale(0.8);
+        }
+      }
+
+      /* ── Layout ── */
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 28px 32px;
+        display: grid;
+        gap: 20px;
+      }
+
+      .timestamp {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--muted);
+        text-align: right;
+        margin-top: -8px;
+      }
+
+      /* ── Stat Cards ── */
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.3s;
+      }
+
+      .card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--accent);
+        opacity: 0.6;
+        transition: opacity 0.3s;
+      }
+
+      .card.warn::before {
+        background: var(--warn);
+        opacity: 1;
+      }
+      .card.danger::before {
+        background: var(--danger);
+        opacity: 1;
+      }
+      .card.warn {
+        border-color: rgba(245, 158, 11, 0.3);
+      }
+      .card.danger {
+        border-color: rgba(239, 68, 68, 0.3);
+      }
+
+      .card-label {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--muted);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+
+      .card-value {
+        font-family: var(--mono);
+        font-size: 2rem;
+        font-weight: 600;
+        color: var(--text);
+        line-height: 1;
+        margin-bottom: 6px;
+      }
+
+      .card-value .unit {
+        font-size: 0.9rem;
+        font-weight: 400;
+        color: var(--muted);
+      }
+
+      .card-sub {
+        font-size: 0.75rem;
+        color: var(--muted);
+      }
+
+      /* Mini bar */
+      .mini-bar {
+        margin-top: 12px;
+        height: 3px;
+        background: var(--border);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      .mini-bar-fill {
+        height: 100%;
+        border-radius: 2px;
+        background: var(--accent);
+        transition:
+          width 0.5s ease,
+          background 0.3s;
+      }
+
+      /* ── Charts ── */
+      .charts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .chart-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      .chart-title {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--muted);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
+
+      .chart-wrap {
+        position: relative;
+        height: 160px;
+      }
+
+      /* ── Alerts ── */
+      .alerts-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+      }
+
+      .alerts-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+
+      .alerts-title {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--muted);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .alert-count {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        padding: 2px 8px;
+        border-radius: 20px;
+      }
+
+      .alert-count.none {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--ok);
+        border-color: rgba(16, 185, 129, 0.3);
+      }
+
+      .alerts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 220px;
+        overflow-y: auto;
+      }
+
+      .alert-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 12px;
+        background: rgba(239, 68, 68, 0.06);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        border-radius: 6px;
+        font-size: 0.82rem;
+      }
+
+      .alert-type {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--danger);
+        font-weight: 600;
+        white-space: nowrap;
+        margin-top: 1px;
+      }
+
+      .alert-msg {
+        color: var(--text);
+        flex: 1;
+      }
+
+      .alert-time {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .no-alerts {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ok);
+        font-size: 0.82rem;
+        padding: 10px 0;
+      }
+
+      .no-alerts::before {
+        content: "✓";
+        font-family: var(--mono);
+      }
+
+      /* ── Network row ── */
+      .net-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .net-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .net-icon {
+        font-size: 1.4rem;
+        opacity: 0.7;
+      }
+
+      .net-label {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--muted);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .net-value {
+        font-family: var(--mono);
+        font-size: 1.3rem;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      /* scrollbar */
+      .alerts-list::-webkit-scrollbar {
+        width: 4px;
+      }
+      .alerts-list::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .alerts-list::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">SysMon <span>// live dashboard</span></div>
+      <div class="status-pill">
+        <div class="pulse" id="pulse"></div>
+        <span id="status-text">connecting...</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="timestamp" id="timestamp">—</div>
+
+      <!-- Stat Cards -->
+      <div class="cards">
+        <div class="card" id="card-cpu">
+          <div class="card-label">CPU Usage</div>
+          <div class="card-value">
+            <span id="cpu-val">—</span><span class="unit">%</span>
+          </div>
+          <div class="card-sub" id="cpu-sub">Fetching...</div>
+          <div class="mini-bar">
+            <div class="mini-bar-fill" id="cpu-bar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="card" id="card-mem">
+          <div class="card-label">Memory</div>
+          <div class="card-value">
+            <span id="mem-val">—</span><span class="unit">%</span>
+          </div>
+          <div class="card-sub" id="mem-sub">Fetching...</div>
+          <div class="mini-bar">
+            <div class="mini-bar-fill" id="mem-bar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="card" id="card-disk">
+          <div class="card-label">Disk</div>
+          <div class="card-value">
+            <span id="disk-val">—</span><span class="unit">%</span>
+          </div>
+          <div class="card-sub" id="disk-sub">Fetching...</div>
+          <div class="mini-bar">
+            <div class="mini-bar-fill" id="disk-bar" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="card" id="card-alerts">
+          <div class="card-label">Anomalies</div>
+          <div class="card-value" id="alert-count-big">—</div>
+          <div class="card-sub" id="alert-sub">No data yet</div>
+          <div class="mini-bar">
+            <div
+              class="mini-bar-fill"
+              id="alert-bar"
+              style="width: 0%; background: var(--danger)"
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts">
+        <div class="chart-card">
+          <div class="chart-title">CPU % — last 30 readings</div>
+          <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Memory % — last 30 readings</div>
+          <div class="chart-wrap"><canvas id="memChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Network -->
+      <div class="net-row">
+        <div class="net-card">
+          <div class="net-icon">↑</div>
+          <div>
+            <div class="net-label">Total Sent</div>
+            <div class="net-value"><span id="net-sent">—</span> MB</div>
+          </div>
+        </div>
+        <div class="net-card">
+          <div class="net-icon">↓</div>
+          <div>
+            <div class="net-label">Total Received</div>
+            <div class="net-value"><span id="net-recv">—</span> MB</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerts -->
+      <div class="alerts-card">
+        <div class="alerts-header">
+          <div class="alerts-title">Anomaly Log</div>
+          <div class="alert-count none" id="alert-badge">0 alerts</div>
+        </div>
+        <div class="alerts-list" id="alerts-list">
+          <div class="no-alerts">All systems normal</div>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      const MAX_POINTS = 30;
+      const INTERVAL_MS = 2000;
+
+      const cpuHistory = [];
+      const memHistory = [];
+      const labels = [];
+
+      const chartDefaults = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 300 },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: "#1f2d40" },
+            ticks: {
+              color: "#64748b",
+              font: { family: "IBM Plex Mono", size: 10 },
+              callback: (v) => v + "%",
+            },
+          },
+        },
+      };
+
+      const cpuChart = new Chart(document.getElementById("cpuChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              data: cpuHistory,
+              borderColor: "#00d4ff",
+              backgroundColor: "rgba(0,212,255,0.08)",
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: true,
+              tension: 0.4,
+            },
+          ],
+        },
+        options: chartDefaults,
+      });
+
+      const memChart = new Chart(document.getElementById("memChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              data: memHistory,
+              borderColor: "#a78bfa",
+              backgroundColor: "rgba(167,139,250,0.08)",
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: true,
+              tension: 0.4,
+            },
+          ],
+        },
+        options: { ...chartDefaults },
+      });
+
+      function setCardState(cardId, barId, percent) {
+        const card = document.getElementById(cardId);
+        const bar = document.getElementById(barId);
+        card.classList.remove("warn", "danger");
+        let color = "var(--accent)";
+        if (percent > 90) {
+          card.classList.add("danger");
+          color = "var(--danger)";
+        } else if (percent > 75) {
+          card.classList.add("warn");
+          color = "var(--warn)";
+        }
+        bar.style.width = percent + "%";
+        bar.style.background = color;
+      }
+
+      function formatTime(iso) {
+        return new Date(iso).toLocaleTimeString();
+      }
+
+      async function fetchMetrics() {
+        try {
+          const res = await fetch("/api/metrics");
+          const d = await res.json();
+
+          // Timestamp
+          document.getElementById("timestamp").textContent =
+            "Last updated: " + formatTime(d.timestamp);
+          document.getElementById("status-text").textContent = "live";
+
+          // CPU
+          document.getElementById("cpu-val").textContent = d.cpu.percent;
+          document.getElementById("cpu-sub").textContent = "of total capacity";
+          setCardState("card-cpu", "cpu-bar", d.cpu.percent);
+
+          // Memory
+          document.getElementById("mem-val").textContent = d.memory.percent;
+          document.getElementById("mem-sub").textContent =
+            `${d.memory.used_gb} / ${d.memory.total_gb} GB`;
+          setCardState("card-mem", "mem-bar", d.memory.percent);
+
+          // Disk
+          document.getElementById("disk-val").textContent = d.disk.percent;
+          document.getElementById("disk-sub").textContent =
+            `${d.disk.used_gb} / ${d.disk.total_gb} GB`;
+          setCardState("card-disk", "disk-bar", d.disk.percent);
+
+          // Network
+          document.getElementById("net-sent").textContent =
+            d.network.bytes_sent_mb;
+          document.getElementById("net-recv").textContent =
+            d.network.bytes_recv_mb;
+
+          // Charts
+          const t = formatTime(d.timestamp);
+          labels.push(t);
+          cpuHistory.push(d.cpu.percent);
+          memHistory.push(d.memory.percent);
+          if (labels.length > MAX_POINTS) {
+            labels.shift();
+            cpuHistory.shift();
+            memHistory.shift();
+          }
+          cpuChart.update();
+          memChart.update();
+        } catch (e) {
+          document.getElementById("status-text").textContent = "disconnected";
+        }
+      }
+
+      async function fetchAlerts() {
+        try {
+          const res = await fetch("/api/alerts");
+          const d = await res.json();
+
+          const count = d.total;
+          const badge = document.getElementById("alert-badge");
+          const big = document.getElementById("alert-count-big");
+          const sub = document.getElementById("alert-sub");
+          const bar = document.getElementById("alert-bar");
+          const list = document.getElementById("alerts-list");
+
+          big.textContent = count;
+          sub.textContent = count === 0 ? "All clear" : "anomalies detected";
+          bar.style.width = Math.min(count * 5, 100) + "%";
+
+          badge.textContent = count + (count === 1 ? " alert" : " alerts");
+          badge.className = "alert-count" + (count > 0 ? "" : " none");
+
+          if (count === 0) {
+            list.innerHTML = '<div class="no-alerts">All systems normal</div>';
+          } else {
+            list.innerHTML = [...d.alerts]
+              .reverse()
+              .map(
+                (a) => `
+          <div class="alert-item">
+            <div class="alert-type">${a.type}</div>
+            <div class="alert-msg">${a.message}</div>
+            <div class="alert-time">${formatTime(a.timestamp)}</div>
+          </div>`,
+              )
+              .join("");
+          }
+        } catch (e) {}
+      }
+
+      // Kick off
+      fetchMetrics();
+      fetchAlerts();
+      setInterval(fetchMetrics, INTERVAL_MS);
+      setInterval(fetchAlerts, INTERVAL_MS * 2);
+    </script>
+  </body>
+</html>
